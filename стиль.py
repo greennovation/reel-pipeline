@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import math
 from pathlib import Path
 import re
 from typing import Any
@@ -122,6 +123,25 @@ def загрузить_стиль(путь: str | Path) -> dict[str, Any]:
     if not isinstance(данные, dict):
         raise ValueError(f"YAML в файле «{файл}» должен содержать словарь настроек")
     return _слить(УМОЛЧАНИЯ, данные)
+
+
+def кадров_в_секунду(стиль: dict[str, Any]) -> int | float:
+    """Возвращает допустимую единую частоту кадров из фирменного стиля."""
+    try:
+        значение = стиль["формат"]["кадров_в_секунду"]
+    except (KeyError, TypeError) as ошибка:
+        raise ValueError("В фирменном стиле не задана формат.кадров_в_секунду") from ошибка
+
+    if (
+        isinstance(значение, bool)
+        or not isinstance(значение, (int, float))
+        or not math.isfinite(значение)
+        or not 1 <= значение <= 240
+    ):
+        raise ValueError(
+            "формат.кадров_в_секунду должна быть числом от 1 до 240"
+        )
+    return значение
 
 
 def цвет(строка: str) -> tuple[int, int, int]:

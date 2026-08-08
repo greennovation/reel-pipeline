@@ -2,7 +2,8 @@
 """Анимированный финал-хоп для рилса: волшебное появление подписи из стиля
 (Cormorant Garamond Italic, кремовый + тень + золотой контур) + искорки + «Псшш!».
 
-Схема: PNG-секвенция (Pillow, 24fps) -> прозрачный mov -> overlay поверх рилса
+Схема: PNG-секвенция (Pillow, с частотой из фирменного стиля) -> прозрачный mov
+-> overlay поверх рилса
 (с хвостом-фризом, чтобы подпись подержалась). Зависимостей сверх pillow/ffmpeg нет.
 
 Запуск: python3 gen_finale.py <вход.mp4> <выход.mp4> [Фирменный стиль.md]
@@ -11,9 +12,9 @@ import math, random, subprocess, sys, tempfile
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
-from стиль import загрузить_стиль
+from стиль import кадров_в_секунду, загрузить_стиль
 
-W, H, FPS = 1080, 1920, 24
+W, H = 1080, 1920
 CREAM = (245, 240, 225); GOLD = (255, 210, 63)
 SIG = "assets/fonts/CormorantGaramondItalic.ttf"
 
@@ -61,6 +62,12 @@ def подпись_финала(стиль):
     return подпись.strip() if isinstance(подпись, str) else ""
 
 
+def параметры_анимации(длительность, стиль):
+    """Возвращает частоту и количество кадров финала из фирменного стиля."""
+    fps = кадров_в_секунду(стиль)
+    return fps, int(длительность * fps)
+
+
 def sig_text(layer, text, f, cx, y, a):
     """Свечение по контуру (мягкое гало) + лёгкая тень. Без жёсткой обводки."""
     d = ImageDraw.Draw(layer); w = d.textlength(text, font=f); x = cx - w/2
@@ -98,7 +105,7 @@ def dur(path):
 
 def main():
     src, dst = sys.argv[1], sys.argv[2]
-    стиль = загрузить_стиль(sys.argv[3]) if len(sys.argv) > 3 else загрузить_стиль("")
+    стиль = загрузить_стиль(sys.argv[3] if len(sys.argv) > 3 else "Фирменный стиль.md")
     подпись = подпись_финала(стиль)
     if not подпись:
         print("Финал пропущен: в фирменном стиле не заполнена подпись")
@@ -116,11 +123,11 @@ def main():
          "-c:v", "libx264", "-preset", "medium", "-crf", "19", "-pix_fmt", "yuv420p",
          "-c:a", "aac", "-b:a", "192k", str(ext)])
     fin_dur = (base + TAIL) - hop               # длительность анимации
-    n = int(fin_dur * FPS)
+    fps, n = параметры_анимации(fin_dur, стиль)
     for i in range(n):
-        frame(i / FPS, подпись).save(tmp / f"f{i:04d}.png")
+        frame(i / fps, подпись).save(tmp / f"f{i:04d}.png")
     mov = tmp / "finale.mov"
-    run(["ffmpeg", "-y", "-v", "error", "-framerate", str(FPS), "-i", str(tmp / "f%04d.png"),
+    run(["ffmpeg", "-y", "-v", "error", "-framerate", str(fps), "-i", str(tmp / "f%04d.png"),
          "-c:v", "png", str(mov)])
 
     # 2) overlay со смещением

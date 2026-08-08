@@ -4,7 +4,7 @@ import re
 import pytest
 import yaml
 
-from стиль import УМОЛЧАНИЯ, загрузить_стиль, цвет
+from стиль import УМОЛЧАНИЯ, загрузить_стиль, кадров_в_секунду, цвет
 
 
 def _пути_ключей(словарь: dict, путь: tuple[str, ...] = ()) -> set[tuple[str, ...]]:
@@ -95,3 +95,11 @@ def test_цвет(вход: str, ожидание: tuple[int, int, int]):
 def test_некорректный_цвет_даёт_понятную_ошибку():
     with pytest.raises(ValueError, match="Некорректный цвет"):
         цвет("жёлтый")
+
+
+@pytest.mark.parametrize("значение", [True, "30", 0, 241, float("nan")])
+def test_некорректная_частота_кадров_даёт_понятную_ошибку(значение):
+    стиль = {"формат": {"кадров_в_секунду": значение}}
+
+    with pytest.raises(ValueError, match="кадров_в_секунду"):
+        кадров_в_секунду(стиль)

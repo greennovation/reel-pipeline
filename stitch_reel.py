@@ -16,13 +16,14 @@
 Таймкоды слов — абсолютные (по исходнику). Текст слов — уже исправленный
 (ошибки whisper правим в плане, тайминги остаются).
 
-Использование: python3 stitch_reel.py plan/04_harness.json
+Использование: python3 stitch_reel.py plan/04_harness.json [Фирменный стиль.md]
 """
 import json, subprocess, sys, tempfile
 from pathlib import Path
 from PIL import Image
 
 from cut_reel import OUT_W, OUT_H, group_phrases, render_state
+from стиль import кадров_в_секунду, загрузить_стиль
 
 # Цвет 23_06: исходники уже сконвертированы в SDR через Apple avconvert (нативный HLG->709
 # тонмап, как айфон/QuickTime) -> raw/23_06_sdr/. Доп. грейд не нужен — passthrough.
@@ -69,7 +70,19 @@ def build_subs_track(words, duration, idx, tmp):
     return subs
 
 
-def build_piece(src, piece, idx, tmp):
+def фильтр_тела(duration, idx, стиль):
+    """Собирает видеочасть фильтра куска с частотой из фирменного стиля."""
+    fps = кадров_в_секунду(стиль)
+    Z = 0.08; N = max(int(duration * fps), 1)
+    zexpr = f"1+{Z}*on/{N}" if idx % 2 == 0 else f"{1+Z}-{Z}*on/{N}"
+    zoom = (f"scale={OUT_W*2}:{OUT_H*2},"
+            f"zoompan=z='{zexpr}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+            f"s={OUT_W}x{OUT_H}:fps={fps}")
+    return (f"[0:v]{GRADE},scale={OUT_W}:{OUT_H}:force_original_aspect_ratio=increase,"
+            f"crop={OUT_W}:{OUT_H},fps={fps},{zoom}[base];")
+
+
+def build_piece(src, piece, idx, tmp, стиль):
     start, end = piece["start"], piece["end"]
     duration = end - start
     words = [{"text": w["text"], "start": w["start"] - start, "end": w["end"] - start}
@@ -80,18 +93,13 @@ def build_piece(src, piece, idx, tmp):
     fo = max(duration - 0.012, 0.0)   # микро-фейд на краях — убирает щелчки на стыках склеек
     # лёгкое движение кадра (±4%): чётные куски — наезд, нечётные — отъезд.
     # zoompan по номеру кадра + суперсэмплинг 2× (иначе дрожит на сабпикселях).
-    Z = 0.08; N = max(int(duration * 24), 1)
-    zexpr = f"1+{Z}*on/{N}" if idx % 2 == 0 else f"{1+Z}-{Z}*on/{N}"
-    zoom = (f"scale={OUT_W*2}:{OUT_H*2},"
-            f"zoompan=z='{zexpr}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
-            f"s={OUT_W}x{OUT_H}:fps=24")
+    видеофильтр = фильтр_тела(duration, idx, стиль)
     run(["ffmpeg", "-y", "-v", "error",
          "-ss", str(start), "-to", str(end), "-i", src, "-i", str(subs),
          "-filter_complex",
          # GRADE 23_06 (под референс Даши): тёплый film — глубже тени, лёгкое тепло, нас.−12%.
          # БЕЗ lut3d. SDR-теги на выходе, чтобы плееры не делали повторный HDR-тонмап.
-         f"[0:v]{GRADE},scale={OUT_W}:{OUT_H}:force_original_aspect_ratio=increase,"
-         f"crop={OUT_W}:{OUT_H},fps=24,{zoom}[base];"
+         видеофильтр,
          f"[base][1:v]overlay=0:0:eof_action=pass[v];"
          f"[0:a]afade=t=in:st=0:d=0.012,afade=t=out:st={fo:.3f}:d=0.012[a]",
          "-map", "[v]", "-map", "[a]",
@@ -103,8 +111,9 @@ def build_piece(src, piece, idx, tmp):
 
 def main():
     plan = json.loads(Path(sys.argv[1]).read_text())
+    стиль = загрузить_стиль(sys.argv[2] if len(sys.argv) > 2 else "Фирменный стиль.md")
     tmp = Path(tempfile.mkdtemp(prefix="reel_"))
-    pieces = [build_piece(plan["src"], p, i, tmp) for i, p in enumerate(plan["pieces"])]
+    pieces = [build_piece(plan["src"], p, i, tmp, стиль) for i, p in enumerate(plan["pieces"])]
 
     out = Path(plan["out"])
     out.parent.mkdir(parents=True, exist_ok=True)
