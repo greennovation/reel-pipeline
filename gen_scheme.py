@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
-"""Панель-схема в НИЖНЕЙ части кадра (под лицом) для обучающих рилсов.
-Брендовый стиль: тёмно-зелёная вуаль + золотые цифры/рамки + кремовый текст,
-заголовок Cormorant. Стрелки — фигурами (юникод-стрелки рендерятся квадратом).
+"""Панель-схема в нижней части кадра для обучающих рилсов.
 
-Запуск: python3 gen_scheme.py <reel_id> <вход.mp4> <выход.mp4>
-Накладывает панель в окне [APPEAR, до финала] с фейдом.
+Текст панели использует шрифт и цвета из раздела ``субтитры`` фирменного
+стиля, поэтому схема остаётся частью того же оформления, что и субтитры.
+
+Запуск: python3 gen_scheme.py <reel_id> <вход.mp4> <выход.mp4> [Фирменный стиль.md]
 """
-import sys, subprocess, tempfile
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
+
 from PIL import Image, ImageDraw, ImageFont
 
-W, H = 1080, 1920
-UNB = "assets/fonts/Unbounded.ttf"; COR = "assets/fonts/CormorantGaramondItalic.ttf"
-CREAM = (245, 240, 225); GOLD = (255, 210, 63); VEIL = (10, 22, 15, 210)
-PANEL_Y0 = 1170          # верх панели (лицо выше — не перекрывается)
+from стиль import УМОЛЧАНИЯ, загрузить_стиль, параметры_субтитров, путь_к_шрифту
+
+
+_ВУАЛЬ = (10, 22, 15, 210)
+_ТЁМНЫЙ_ТЕКСТ = (10, 22, 15)
 APPEAR, TAIL = 2.5, 3.5  # старт после обложки; хвост (финал) без панели
 
 # Схемы по роликам: заголовок + шаги (номер крупно, подпись)
@@ -38,66 +42,86 @@ SCHEMES = {
 }
 
 
-def font(path, size, weight=None):
-    f = ImageFont.truetype(path, size)
+def font(параметры, size, weight=None):
+    f = ImageFont.truetype(str(путь_к_шрифту(параметры["шрифт"])), size)
     if weight:
-        try: f.set_variation_by_axes([weight])
-        except Exception: pass
+        try:
+            f.set_variation_by_axes([weight])
+        except Exception:
+            pass
     return f
 
 
-def panel_png(rid, out):
-    sch = SCHEMES[rid]; steps = sch["steps"]
-    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+def panel_png(rid, out, стиль=None):
+    """Рендерит схему с текстовым оформлением из фирменного стиля."""
+    параметры = параметры_субтитров(стиль or УМОЛЧАНИЯ)
+    sch = SCHEMES[rid]
+    steps = sch["steps"]
+    width, height = параметры["ширина"], параметры["высота"]
+    img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    pad = 40; x0 = pad; x1 = W - pad
-    row_h = 104; head_h = 96
-    y1 = PANEL_Y0 + head_h + len(steps) * row_h + 30
-    # вуаль-подложка + золотая рамка
-    d.rounded_rectangle([x0, PANEL_Y0, x1, y1], 34, fill=VEIL, outline=GOLD, width=3)
-    # заголовок (Cormorant золото)
-    ft = font(COR, 64)
-    tw = d.textlength(sch["title"], font=ft)
-    d.text(((W - tw) / 2, PANEL_Y0 + 16), sch["title"], font=ft, fill=GOLD)
-    # шаги
-    fnum = font(UNB, 46, 800); fstep = font(UNB, 38, 600)
-    sy = PANEL_Y0 + head_h
-    for i, s in enumerate(steps):
+    pad = 40
+    x0, x1 = pad, width - pad
+    row_h, head_h = 104, 96
+    panel_y = int(height * 0.609375)
+    y1 = panel_y + head_h + len(steps) * row_h + 30
+    active = параметры["цвет_активного_слова"]
+    text = параметры["цвет_текста"]
+
+    d.rounded_rectangle([x0, panel_y, x1, y1], 34, fill=_ВУАЛЬ, outline=active, width=3)
+    title_font = font(параметры, round(параметры["размер"] * 4 / 3))
+    tw = d.textlength(sch["title"], font=title_font)
+    d.text(((width - tw) / 2, panel_y + 16), sch["title"], font=title_font, fill=active)
+
+    number_font = font(параметры, параметры["размер"], 800)
+    step_size = round(параметры["размер"] * 19 / 24)
+    step_font = font(параметры, step_size, 600)
+    sy = panel_y + head_h
+    for i, step in enumerate(steps):
         cy = sy + i * row_h
-        # золотой кружок с номером
-        r = 34; cx = x0 + 56
-        d.ellipse([cx - r, cy + 8, cx + r, cy + 8 + 2 * r], fill=GOLD)
-        n = str(i + 1)
-        nw = d.textlength(n, font=fnum)
-        d.text((cx - nw / 2, cy + 12), n, font=fnum, fill=(10, 22, 15))
-        # подпись (авто-уменьшение шрифта, чтобы влезть в рамку)
-        tx = cx + r + 28; avail = x1 - tx - 24
-        fs = fstep
-        for sz in (38, 35, 32, 29):
-            fs = font(UNB, sz, 600)
-            if d.textlength(s, font=fs) <= avail: break
-        d.text((tx, cy + 18), s, font=fs, fill=CREAM)
-        # коннектор-линия между кружками (вместо юникод-стрелки)
+        radius = 34
+        cx = x0 + 56
+        d.ellipse([cx - radius, cy + 8, cx + radius, cy + 8 + 2 * radius], fill=active)
+        number = str(i + 1)
+        nw = d.textlength(number, font=number_font)
+        d.text((cx - nw / 2, cy + 12), number, font=number_font, fill=_ТЁМНЫЙ_ТЕКСТ)
+        tx = cx + radius + 28
+        available = x1 - tx - 24
+        chosen_font = step_font
+        for size in (step_size, round(step_size * 0.92), round(step_size * 0.84), round(step_size * 0.76)):
+            chosen_font = font(параметры, size, 600)
+            if d.textlength(step, font=chosen_font) <= available:
+                break
+        d.text((tx, cy + 18), step, font=chosen_font, fill=text)
         if i < len(steps) - 1:
-            d.line([cx, cy + 8 + 2 * r, cx, cy + row_h + 8], fill=GOLD, width=4)
+            d.line([cx, cy + 8 + 2 * radius, cx, cy + row_h + 8], fill=active, width=4)
     img.save(out)
 
 
 def main():
     rid, src, dst = sys.argv[1], sys.argv[2], sys.argv[3]
+    путь_стиля = sys.argv[4] if len(sys.argv) > 4 else "Фирменный стиль.md"
+    стиль = загрузить_стиль(путь_стиля)
     tmp = Path(tempfile.mkdtemp(prefix="scheme_"))
-    png = tmp / "panel.png"; panel_png(rid, png)
-    # длительность -> панель до (конец - TAIL), фейд-ин/аут
-    o = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
-                        "-of", "default=nw=1:nk=1", src], capture_output=True, text=True)
-    dur = float(o.stdout.strip()); off = dur - TAIL
-    subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", src, "-loop", "1", "-t", str(dur), "-i", str(png),
-        "-filter_complex",
-        f"[1:v]format=rgba,fade=t=in:st={APPEAR}:d=0.4:alpha=1,fade=t=out:st={off-0.4}:d=0.4:alpha=1[p];"
-        f"[0:v][p]overlay=0:0:enable='between(t,{APPEAR},{off})'[v]",
-        "-map", "[v]", "-map", "0:a", "-c:v", "libx264", "-preset", "medium", "-crf", "19",
-        "-pix_fmt", "yuv420p", "-color_primaries", "bt709", "-color_trc", "bt709",
-        "-colorspace", "bt709", "-c:a", "copy", dst], check=True)
+    png = tmp / "panel.png"
+    panel_png(rid, png, стиль)
+    o = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", src],
+        capture_output=True,
+        text=True,
+    )
+    dur = float(o.stdout.strip())
+    off = dur - TAIL
+    subprocess.run(
+        ["ffmpeg", "-y", "-v", "error", "-i", src, "-loop", "1", "-t", str(dur), "-i", str(png),
+         "-filter_complex",
+         f"[1:v]format=rgba,fade=t=in:st={APPEAR}:d=0.4:alpha=1,fade=t=out:st={off - 0.4}:d=0.4:alpha=1[p];"
+         f"[0:v][p]overlay=0:0:enable='between(t,{APPEAR},{off})'[v]",
+         "-map", "[v]", "-map", "0:a", "-c:v", "libx264", "-preset", "medium", "-crf", "19",
+         "-pix_fmt", "yuv420p", "-color_primaries", "bt709", "-color_trc", "bt709",
+         "-colorspace", "bt709", "-c:a", "copy", dst],
+        check=True,
+    )
     print(f"OK схема {rid} -> {dst}")
 
 

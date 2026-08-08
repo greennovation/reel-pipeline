@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Сборка рилса из кусков исходника по плану + субтитры «тень».
+"""Сборка рилса из кусков исходника по плану + субтитры из фирменного стиля.
 
 Архитектура: PNG-состояния субтитров (слово подсвечено) → прозрачная
 видеодорожка (concat demuxer + png-кодек в mov) → один overlay на видео.
@@ -22,8 +22,8 @@ import json, subprocess, sys, tempfile
 from pathlib import Path
 from PIL import Image
 
-from cut_reel import OUT_W, OUT_H, group_phrases, render_state
-from стиль import кадров_в_секунду, загрузить_стиль
+from cut_reel import group_phrases, отрисовщик_субтитров
+from стиль import кадров_в_секунду, загрузить_стиль, параметры_субтитров
 
 # Цвет 23_06: исходники уже сконвертированы в SDR через Apple avconvert (нативный HLG->709
 # тонмап, как айфон/QuickTime) -> raw/23_06_sdr/. Доп. грейд не нужен — passthrough.
@@ -34,19 +34,20 @@ def run(cmd):
     subprocess.run(cmd, check=True)
 
 
-def build_subs_track(words, duration, idx, tmp):
+def build_subs_track(words, duration, idx, tmp, стиль):
     """Прозрачный subs.mov: состояния «активное слово» с точными длительностями."""
-    phrases = group_phrases(words)
+    render, параметры = отрисовщик_субтитров(стиль)
+    phrases = group_phrases(words, параметры)
     states = []  # (png, start, end) внутри куска
     for pi, phrase in enumerate(phrases):
         for wi, w in enumerate(phrase):
             png = tmp / f"pc{idx}_p{pi:02d}_w{wi:02d}.png"
-            render_state(phrase, wi, png)
+            render(phrase, wi, png, параметры)
             until = phrase[wi + 1]["start"] if wi + 1 < len(phrase) else min(phrase[-1]["end"] + 0.15, duration)
             states.append((png, w["start"], until))
 
     blank = tmp / "blank.png"
-    Image.new("RGBA", (OUT_W, OUT_H), (0, 0, 0, 0)).save(blank)
+    Image.new("RGBA", (параметры["ширина"], параметры["высота"]), (0, 0, 0, 0)).save(blank)
 
     lines, cursor = [], 0.0
     for png, s, e in states:
@@ -73,13 +74,15 @@ def build_subs_track(words, duration, idx, tmp):
 def фильтр_тела(duration, idx, стиль):
     """Собирает видеочасть фильтра куска с частотой из фирменного стиля."""
     fps = кадров_в_секунду(стиль)
+    параметры = параметры_субтитров(стиль)
+    ширина, высота = параметры["ширина"], параметры["высота"]
     Z = 0.08; N = max(int(duration * fps), 1)
     zexpr = f"1+{Z}*on/{N}" if idx % 2 == 0 else f"{1+Z}-{Z}*on/{N}"
-    zoom = (f"scale={OUT_W*2}:{OUT_H*2},"
+    zoom = (f"scale={ширина*2}:{высота*2},"
             f"zoompan=z='{zexpr}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
-            f"s={OUT_W}x{OUT_H}:fps={fps}")
-    return (f"[0:v]{GRADE},scale={OUT_W}:{OUT_H}:force_original_aspect_ratio=increase,"
-            f"crop={OUT_W}:{OUT_H},fps={fps},{zoom}[base];")
+            f"s={ширина}x{высота}:fps={fps}")
+    return (f"[0:v]{GRADE},scale={ширина}:{высота}:force_original_aspect_ratio=increase,"
+            f"crop={ширина}:{высота},fps={fps},{zoom}[base];")
 
 
 def build_piece(src, piece, idx, tmp, стиль):
@@ -87,7 +90,7 @@ def build_piece(src, piece, idx, tmp, стиль):
     duration = end - start
     words = [{"text": w["text"], "start": w["start"] - start, "end": w["end"] - start}
              for w in piece["words"]]
-    subs = build_subs_track(words, duration, idx, tmp)
+    subs = build_subs_track(words, duration, idx, tmp, стиль)
 
     out = tmp / f"piece_{idx}.mp4"
     fo = max(duration - 0.012, 0.0)   # микро-фейд на краях — убирает щелчки на стыках склеек

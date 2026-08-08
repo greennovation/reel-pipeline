@@ -1,26 +1,41 @@
 #!/usr/bin/env python3
-"""Нарезка рилса из исходника + вшитые субтитры в стиле «тень».
+"""Нарезка рилса и вшитые субтитры из «Фирменный стиль.md».
 
-Стиль зафиксирован 2026-06-12: Unbounded SemiBold, белый текст с мягкой тенью
-(GaussianBlur), активное слово — жёлтый #FFD23F, позиция ~70% высоты кадра.
+Оформление, включая положение, шрифт, цвета и способ отрисовки, задаётся
+разделом ``субтитры`` фирменного стиля. Поддерживаются «тень» и «плашка».
 
 Использование:
   python3 cut_reel.py --src raw/A001.mov --json transcripts/A001.json \
       --start 73.4 --end 98.1 --out cut/01_120skillov.mp4
 """
-import argparse, json, subprocess, tempfile
+import argparse
+import json
+import subprocess
+import tempfile
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
+from typing import Any, Callable
 
-FONT = Path(__file__).parent / "assets/fonts/Unbounded.ttf"
-OUT_W, OUT_H = 1080, 1920
-SUB_Y = int(OUT_H * 0.16)        # верх блока субтитров (перенесён наверх 23_06; было 0.70)
-FONT_SIZE = 48
-LINE_H = 72
-MAX_LINE = 20                    # символов в строке
-MAX_LINES = 2
-GAP_BREAK = 0.7                  # пауза (сек), после которой начинается новая фраза
-YELLOW = (255, 210, 63)
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
+
+from стиль import УМОЛЧАНИЯ, загрузить_стиль, параметры_субтитров, путь_к_шрифту
+
+
+# Старые шаблоны импортируют размеры кадра из этого модуля. Их источник правды
+# теперь тот же раздел «формат» в стиль.py, а рабочий рендер использует размеры
+# конкретно загруженного фирменного стиля.
+_РАЗМЕРЫ_УМОЛЧАНИЙ = параметры_субтитров(УМОЛЧАНИЯ)
+OUT_W = _РАЗМЕРЫ_УМОЛЧАНИЙ["ширина"]
+OUT_H = _РАЗМЕРЫ_УМОЛЧАНИЙ["высота"]
+
+
+def подготовить_параметры_субтитров(стиль: dict[str, Any]) -> dict[str, Any]:
+    """Выбирает и проверяет параметры субтитров из загруженного стиля."""
+    return параметры_субтитров(стиль)
+
+
+def _параметры_по_умолчанию() -> dict[str, Any]:
+    """Возвращает встроенный стиль без чтения файла из текущего каталога."""
+    return подготовить_параметры_субтитров(УМОЛЧАНИЯ)
 
 
 def load_words(json_path, start, end):
@@ -29,18 +44,28 @@ def load_words(json_path, start, end):
     for seg in data["segments"]:
         for w in seg.get("words", []):
             if w["start"] >= start - 0.05 and w["end"] <= end + 0.05:
-                words.append({"text": w["word"].strip(), "start": w["start"] - start, "end": w["end"] - start})
+                words.append(
+                    {
+                        "text": w["word"].strip(),
+                        "start": w["start"] - start,
+                        "end": w["end"] - start,
+                    }
+                )
     return words
 
 
-def group_phrases(words):
-    """Бьём слова на фразы ≤2 строк по длине и паузам."""
+def group_phrases(words, параметры: dict[str, Any] | None = None):
+    """Бьёт слова на фразы по настройкам длины строк и паузы стиля."""
+    параметры = параметры or _параметры_по_умолчанию()
     phrases, cur = [], []
     for w in words:
         candidate = cur + [w]
         text_len = len(" ".join(x["text"] for x in candidate))
-        long_pause = cur and w["start"] - cur[-1]["end"] > GAP_BREAK
-        if cur and (text_len > MAX_LINE * MAX_LINES or long_pause):
+        long_pause = cur and w["start"] - cur[-1]["end"] > параметры["пауза_новой_фразы"]
+        if cur and (
+            text_len > параметры["символов_в_строке"] * параметры["строк_максимум"]
+            or long_pause
+        ):
             phrases.append(cur)
             cur = [w]
         else:
@@ -50,10 +75,12 @@ def group_phrases(words):
     return phrases
 
 
-def wrap_lines(phrase):
+def wrap_lines(phrase, параметры: dict[str, Any] | None = None):
+    """Переносит слова по ширине строки из фирменного стиля."""
+    параметры = параметры or _параметры_по_умолчанию()
     lines, line = [], []
     for w in phrase:
-        if line and len(" ".join(x["text"] for x in line + [w])) > MAX_LINE:
+        if line and len(" ".join(x["text"] for x in line + [w])) > параметры["символов_в_строке"]:
             lines.append(line)
             line = [w]
         else:
@@ -63,8 +90,9 @@ def wrap_lines(phrase):
     return lines
 
 
-def make_font(size, weight):
-    f = ImageFont.truetype(str(FONT), size)
+def make_font(параметры: dict[str, Any], weight: int):
+    """Создаёт шрифт, выбранный в разделе ``субтитры``."""
+    f = ImageFont.truetype(str(путь_к_шрифту(параметры["шрифт"])), параметры["размер"])
     try:
         f.set_variation_by_axes([weight])
     except Exception:
@@ -72,40 +100,60 @@ def make_font(size, weight):
     return f
 
 
-F_SUB = make_font(FONT_SIZE, 600)
-
-
-def render_state(phrase, active_i, out_png):
-    """PNG 1080x1920 (RGBA): фраза с тенью, слово active_i — жёлтое."""
-    img = Image.new("RGBA", (OUT_W, OUT_H), (0, 0, 0, 0))
+def render_state(
+    phrase,
+    active_i,
+    out_png,
+    параметры: dict[str, Any] | None = None,
+):
+    """Рендерит PNG с тенью, подсвечивая активное слово цветом стиля."""
+    параметры = параметры or _параметры_по_умолчанию()
+    img = Image.new("RGBA", (параметры["ширина"], параметры["высота"]), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    lines = wrap_lines(phrase)
-    # тень
+    шрифт = make_font(параметры, 600)
+    lines = wrap_lines(phrase, параметры)
     shadow = Image.new("L", img.size, 0)
     ds = ImageDraw.Draw(shadow)
-    flat_idx = 0
     for li, line in enumerate(lines):
         text = " ".join(w["text"] for w in line)
-        total = d.textlength(text, font=F_SUB)
-        x = (OUT_W - total) / 2
-        y = SUB_Y + li * LINE_H
-        ds.text((x + 7, y + 9), text, font=F_SUB, fill=235)
+        total = d.textlength(text, font=шрифт)
+        x = (параметры["ширина"] - total) / 2
+        y = параметры["верх_блока"] + li * параметры["высота_строки"]
+        ds.text((x + 7, y + 9), text, font=шрифт, fill=235)
     shadow = shadow.filter(ImageFilter.GaussianBlur(9))
     black = Image.new("RGBA", img.size, (0, 0, 0, 255))
     img.paste(black, (0, 0), shadow)
-    # текст
+
     flat_idx = 0
     for li, line in enumerate(lines):
         text = " ".join(w["text"] for w in line)
-        total = d.textlength(text, font=F_SUB)
-        x = (OUT_W - total) / 2
-        y = SUB_Y + li * LINE_H
+        total = d.textlength(text, font=шрифт)
+        x = (параметры["ширина"] - total) / 2
+        y = параметры["верх_блока"] + li * параметры["высота_строки"]
         for w in line:
-            color = YELLOW if flat_idx == active_i else (255, 255, 255)
-            d.text((x, y), w["text"], font=F_SUB, fill=color)
-            x += d.textlength(w["text"] + " ", font=F_SUB)
+            fill = (
+                параметры["цвет_активного_слова"]
+                if flat_idx == active_i
+                else параметры["цвет_текста"]
+            )
+            d.text((x, y), w["text"], font=шрифт, fill=fill)
+            x += d.textlength(w["text"] + " ", font=шрифт)
             flat_idx += 1
     img.save(out_png)
+
+
+def отрисовщик_субтитров(
+    стиль: dict[str, Any],
+) -> tuple[Callable[..., None], dict[str, Any]]:
+    """Возвращает рендерер, явно выбранный ``субтитры.стиль``."""
+    параметры = подготовить_параметры_субтитров(стиль)
+    if параметры["стиль"] == "тень":
+        return render_state, параметры
+    if параметры["стиль"] == "плашка":
+        from sub_plashka import render_state as отрисовать_плашку
+
+        return отрисовать_плашку, параметры
+    raise AssertionError("параметры_субтитров должен проверить стиль субтитров")
 
 
 def main():
@@ -115,36 +163,40 @@ def main():
     ap.add_argument("--start", type=float, required=True)
     ap.add_argument("--end", type=float, required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--style", default="Фирменный стиль.md")
     args = ap.parse_args()
 
+    стиль = загрузить_стиль(args.style)
+    render, параметры = отрисовщик_субтитров(стиль)
     words = load_words(args.json, args.start, args.end)
     if not words:
         raise SystemExit("В этом интервале нет слов — проверь таймкоды")
-    phrases = group_phrases(words)
+    phrases = group_phrases(words, параметры)
 
     tmp = Path(tempfile.mkdtemp(prefix="reel_"))
     overlays = []  # (png, start, end)
     for pi, phrase in enumerate(phrases):
         for wi, w in enumerate(phrase):
             png = tmp / f"p{pi:02d}_w{wi:02d}.png"
-            render_state(phrase, wi, png)
+            render(phrase, wi, png, параметры)
             until = phrase[wi + 1]["start"] if wi + 1 < len(phrase) else phrase[-1]["end"] + 0.15
             overlays.append((png, w["start"], until))
 
-    # ffmpeg: trim → scale/crop до 1080x1920 → цепочка overlay
     inputs = ["-ss", str(args.start), "-to", str(args.end), "-i", args.src]
     for png, _, _ in overlays:
         inputs += ["-i", str(png)]
-    fc = [f"[0:v]scale={OUT_W}:{OUT_H}:force_original_aspect_ratio=increase,crop={OUT_W}:{OUT_H}[v0]"]
+    ширина, высота = параметры["ширина"], параметры["высота"]
+    fc = [f"[0:v]scale={ширина}:{высота}:force_original_aspect_ratio=increase,crop={ширина}:{высота}[v0]"]
     prev = "v0"
-    for i, (_, s, e) in enumerate(overlays):
-        nxt = f"v{i+1}"
-        fc.append(f"[{prev}][{i+1}:v]overlay=0:0:enable='between(t,{s:.3f},{e:.3f})'[{nxt}]")
+    for i, (_, start, end) in enumerate(overlays):
+        nxt = f"v{i + 1}"
+        fc.append(f"[{prev}][{i + 1}:v]overlay=0:0:enable='between(t,{start:.3f},{end:.3f})'[{nxt}]")
         prev = nxt
     cmd = ["ffmpeg", "-y", "-v", "error"] + inputs + [
         "-filter_complex", ";".join(fc), "-map", f"[{prev}]", "-map", "0:a",
         "-c:v", "libx264", "-preset", "medium", "-crf", "19",
-        "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", args.out]
+        "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", args.out,
+    ]
     subprocess.run(cmd, check=True)
     print(f"OK {args.out}: {len(phrases)} фраз, {len(overlays)} слов-состояний")
 
