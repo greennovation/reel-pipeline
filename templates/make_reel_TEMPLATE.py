@@ -17,6 +17,7 @@ SHOOT = "TEMPLATE"
 BUILD = f"build_{SHOOT}.py"          # твой build-файл
 SDR_DIR = "raw_sdr"                  # папка SDR-исходников
 STYLE = "Фирменный стиль.md"
+REELS_DIR = Path("reels")            # Markdown: reels/<reel_id>.md
 
 
 def видеофильтр(стиль):
@@ -48,6 +49,7 @@ def dur(p):
 
 def main():
     rid = sys.argv[1]
+    ролик = REELS_DIR / f"{rid}.md"
     стиль = загрузить_стиль(STYLE)
     vf = видеофильтр(стиль)
     src, spans = FINALE[rid]
@@ -67,7 +69,7 @@ def main():
     fin = f"cut/{SHOOT}_{rid}_final.mp4"; run(["python3", "gen_finale.py", base, fin, STYLE])
     pol = f"cut/{SHOOT}_{rid}_polished.mp4"; run(["python3", "gen_polish.py", fin, pol, f"{dur(fin)-3.0:.2f}"])
     pre = f"cut/{SHOOT}_{rid}_pre.mp4"; run(["python3", "gen_music.py", pol, pre, "0.05", "pad"])
-    music = f"cut/{SHOOT}_{rid}_music.mp4"; run(["python3", "gen_cover.py", rid, pre, music])
+    music = f"cut/{SHOOT}_{rid}_music.mp4"; run(["python3", "gen_cover.py", ролик, pre, music, STYLE])
     for f in [body, base, fin, pol, pre]:
         if os.path.exists(f): os.remove(f)
     print(f"OK -> {music}")

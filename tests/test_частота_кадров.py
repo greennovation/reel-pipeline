@@ -1,5 +1,6 @@
 import importlib.util
 from pathlib import Path
+import sys
 
 import gen_finale
 import stitch_reel
@@ -56,3 +57,23 @@ def test_шаблонный_фильтр_берёт_частоту_из_стил
     assert "fps=25" in низкая
     assert "fps=50" in высокая
     assert низкая != высокая
+
+
+def test_шаблон_передаёт_обложке_markdown_описание_рилса(monkeypatch):
+    шаблон = _шаблон_оркестратора()
+    команды = []
+    monkeypatch.setattr(шаблон, "run", команды.append)
+    monkeypatch.setattr(шаблон, "dur", lambda _: 4.0)
+    monkeypatch.setattr(шаблон, "FINALE", {"тест": ("raw_sdr/IMG_0421.mov", [])})
+    monkeypatch.setattr(sys, "argv", ["make_reel_TEMPLATE.py", "тест"])
+
+    шаблон.main()
+
+    assert [
+        "python3",
+        "gen_cover.py",
+        Path("reels/тест.md"),
+        "cut/TEMPLATE_тест_pre.mp4",
+        "cut/TEMPLATE_тест_music.mp4",
+        "Фирменный стиль.md",
+    ] in команды

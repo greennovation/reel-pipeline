@@ -92,7 +92,7 @@ whisper transcripts/SHOT.wav --model small --language Russian \
     --word_timestamps True --output_format json --output_dir transcripts
 # 4) опишите рилс в своих копиях шаблонов:
 cp templates/build_TEMPLATE.py build_myshoot.py            # заполнить SOURCES / REELS
-cp templates/make_reel_TEMPLATE.py make_reel_myshoot.py    # заполнить FINALE / COVER
+cp templates/make_reel_TEMPLATE.py make_reel_myshoot.py    # заполнить FINALE и путь к Markdown-роликам
 # 5) рендер:
 python3 build_myshoot.py myreel                            # план -> plan/*.json
 python3 make_reel_myshoot.py myreel                        # готовый рилс -> cut/*.mp4

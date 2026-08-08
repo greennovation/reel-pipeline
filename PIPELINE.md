@@ -78,7 +78,8 @@ avconvert -p Preset1920x1080 -s raw/SHOT.MOV -o raw_sdr/SHOT.mov --replace
 
 ### Шаг 4. Финал и обложка
 - `make_reel_*.py` → `FINALE = {id: (видео, [(a,b)])}` — кусок «Меня зовут …, я Шипучка» + родной **ПШШ** (ищи по ZCR>0.4 + энергия; если нет в дубле — донор из другого файла той же съёмки).
-- `gen_cover.py` → `COVER[id] = {"l1","l2","st"}` — две строки обложки + стикер-маскот.
+- `gen_cover.py` читает `обложка.строка1`, `обложка.строка2` и `обложка.стикер`
+  из Markdown-описания ролика.
 
 ### Шаг 5. Рендер (один оркестратор)
 ```bash
@@ -154,6 +155,6 @@ python3 make_reel_<shoot>.py myreel    # полный конвейер -> cut/<s
 - [ ] Своя съёмка → `raw/`, проверил `rotation`
 - [ ] avconvert → `raw_sdr/`
 - [ ] whisper word-тайминги → `transcripts/`
-- [ ] Скопировал templates/*TEMPLATE.py → build_<моё>.py + make_reel_<моё>.py, заполнил SOURCES/REELS/FINALE/COVER
+- [ ] Скопировал templates/*TEMPLATE.py → build_<моё>.py + make_reel_<моё>.py, заполнил SOURCES/REELS/FINALE и Markdown-описания роликов
 - [ ] `build` → `make_reel` → QA кадрами + перетранскрипт готового
 - [ ] Цвет проверен (SDR-теги), субтитры читаемы, финал с ПШШ
