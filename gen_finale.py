@@ -1,22 +1,24 @@
 #!/usr/bin/env python3
-"""Анимированный финал-хоп для рилса: волшебное появление подписи «Я Шипучка»
+"""Анимированный финал-хоп для рилса: волшебное появление подписи из стиля
 (Cormorant Garamond Italic, кремовый + тень + золотой контур) + искорки + «Псшш!».
 
 Схема: PNG-секвенция (Pillow, 24fps) -> прозрачный mov -> overlay поверх рилса
 (с хвостом-фризом, чтобы подпись подержалась). Зависимостей сверх pillow/ffmpeg нет.
 
-Запуск: python3 gen_finale.py cut/19_06_05.mp4 cut/19_06_05_final.mp4
+Запуск: python3 gen_finale.py <вход.mp4> <выход.mp4> [Фирменный стиль.md]
 """
 import math, random, subprocess, sys, tempfile
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
+
+from стиль import загрузить_стиль
 
 W, H, FPS = 1080, 1920, 24
 CREAM = (245, 240, 225); GOLD = (255, 210, 63)
 SIG = "assets/fonts/CormorantGaramondItalic.ttf"
 
 TAIL = 1.0            # хвост-фриз (с) после конца речи/пшш
-HOP_BEFORE_END = 2.0 # за сколько до конца базы начинается хоп (на словах «я Шипучка»)
+HOP_BEFORE_END = 2.0 # за сколько до конца базы начинается хоп
 REVEAL = 0.7         # длительность раскрытия подписи
 PSH_AT = 1.4         # локальное время «Псшш!» (синхронно с реальным пшш в финале)
 SIG_Y = 1000         # центр подписи по вертикали
@@ -45,9 +47,18 @@ def sparkles(layer, prog, cy, n=22, spread=420, seed=7):
             star(d, x, y, rnd.uniform(8, 20)*(0.5+0.5*prog), GOLD if i % 3 else CREAM, a)
 
 
-TEXT = "AI Шипучка"          # подпись финала — замени на своё имя/бренд
 FILL = GOLD                  # цвет букв (вариант 3: золото)
 GLOW = (255, 255, 255)       # цвет свечения по контуру (белое)
+
+
+def подпись_финала(стиль):
+    """Возвращает подпись финала из фирменного стиля.
+
+    Пустая подпись означает, что фирменный финал для ролика отключён.
+    """
+    финал = стиль.get("финал", {})
+    подпись = финал.get("подпись", "") if isinstance(финал, dict) else ""
+    return подпись.strip() if isinstance(подпись, str) else ""
 
 
 def sig_text(layer, text, f, cx, y, a):
@@ -65,13 +76,13 @@ def sig_text(layer, text, f, cx, y, a):
     ImageDraw.Draw(layer).text((x, y), text, font=f, fill=FILL + (a,))
 
 
-def frame(t):
+def frame(t, подпись):
     lay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     sparkles(lay, min(t/REVEAL, 1), cy=SIG_Y)
     a = int(255 * min(t/(REVEAL*0.55), 1)); scale = 0.55 + 0.45*ease(min(t/REVEAL, 1))
     size = int(SIG_SIZE*scale); f = ImageFont.truetype(SIG, size)
     drift = int(34*(1-ease(min(t/REVEAL, 1))))
-    sig_text(lay, TEXT, f, W//2, SIG_Y + drift - size//2, a)
+    sig_text(lay, подпись, f, W//2, SIG_Y + drift - size//2, a)
     if t > PSH_AT:
         ap = int(255*min((t-PSH_AT)/0.3, 1)); fp = ImageFont.truetype(SIG, 110)
         sig_text(lay, "Псшш!", fp, W//2, SIG_Y + 220, ap)
@@ -87,6 +98,11 @@ def dur(path):
 
 def main():
     src, dst = sys.argv[1], sys.argv[2]
+    стиль = загрузить_стиль(sys.argv[3]) if len(sys.argv) > 3 else загрузить_стиль("")
+    подпись = подпись_финала(стиль)
+    if not подпись:
+        print("Финал пропущен: в фирменном стиле не заполнена подпись")
+        return False
     base = dur(src)
     tmp = Path(tempfile.mkdtemp(prefix="finale_"))
 
@@ -102,7 +118,7 @@ def main():
     fin_dur = (base + TAIL) - hop               # длительность анимации
     n = int(fin_dur * FPS)
     for i in range(n):
-        frame(i / FPS).save(tmp / f"f{i:04d}.png")
+        frame(i / FPS, подпись).save(tmp / f"f{i:04d}.png")
     mov = tmp / "finale.mov"
     run(["ffmpeg", "-y", "-v", "error", "-framerate", str(FPS), "-i", str(tmp / "f%04d.png"),
          "-c:v", "png", str(mov)])
@@ -114,6 +130,7 @@ def main():
          "-c:v", "libx264", "-preset", "medium", "-crf", "19", "-pix_fmt", "yuv420p",
          "-c:a", "copy", dst])
     print(f"OK {dst}  (хоп с {hop:.2f}s, анимация {fin_dur:.2f}s, итог {base+TAIL:.2f}s)")
+    return True
 
 
 if __name__ == "__main__":
