@@ -76,13 +76,16 @@ def фильтр_тела(duration, idx, стиль):
     fps = кадров_в_секунду(стиль)
     параметры = параметры_субтитров(стиль)
     ширина, высота = параметры["ширина"], параметры["высота"]
-    Z = 0.08; N = max(int(duration * fps), 1)
-    zexpr = f"1+{Z}*on/{N}" if idx % 2 == 0 else f"{1+Z}-{Z}*on/{N}"
-    zoom = (f"scale={ширина*2}:{высота*2},"
-            f"zoompan=z='{zexpr}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
-            f"s={ширина}x{высота}:fps={fps}")
-    return (f"[0:v]{GRADE},scale={ширина}:{высота}:force_original_aspect_ratio=increase,"
-            f"crop={ширина}:{высота},fps={fps},{zoom}[base];")
+    zoom = стиль["монтаж"]["зум"]
+    фильтр = (f"[0:v]{GRADE},scale={ширина}:{высота}:force_original_aspect_ratio=increase,"
+              f"crop={ширина}:{высота},fps={fps}")
+    if zoom:
+        frames = max(int(duration * fps), 1)
+        zexpr = f"1+{zoom}*on/{frames}" if idx % 2 == 0 else f"{1+zoom}-{zoom}*on/{frames}"
+        фильтр += (f",scale={ширина*2}:{высота*2},"
+                   f"zoompan=z='{zexpr}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+                   f"s={ширина}x{высота}:fps={fps}")
+    return f"{фильтр}[base];"
 
 
 def build_piece(src, piece, idx, tmp, стиль):
@@ -97,14 +100,17 @@ def build_piece(src, piece, idx, tmp, стиль):
     # лёгкое движение кадра (±4%): чётные куски — наезд, нечётные — отъезд.
     # zoompan по номеру кадра + суперсэмплинг 2× (иначе дрожит на сабпикселях).
     видеофильтр = фильтр_тела(duration, idx, стиль)
+    граф_фильтров = (
+        видеофильтр
+        + f"[base][1:v]overlay=0:0:eof_action=pass[v];"
+        + f"[0:a]afade=t=in:st=0:d=0.012,afade=t=out:st={fo:.3f}:d=0.012[a]"
+    )
     run(["ffmpeg", "-y", "-v", "error",
          "-ss", str(start), "-to", str(end), "-i", src, "-i", str(subs),
          "-filter_complex",
          # GRADE 23_06 (под референс Даши): тёплый film — глубже тени, лёгкое тепло, нас.−12%.
          # БЕЗ lut3d. SDR-теги на выходе, чтобы плееры не делали повторный HDR-тонмап.
-         видеофильтр,
-         f"[base][1:v]overlay=0:0:eof_action=pass[v];"
-         f"[0:a]afade=t=in:st=0:d=0.012,afade=t=out:st={fo:.3f}:d=0.012[a]",
+         граф_фильтров,
          "-map", "[v]", "-map", "[a]",
          "-c:v", "libx264", "-preset", "medium", "-crf", "19", "-pix_fmt", "yuv420p",
          "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709",
