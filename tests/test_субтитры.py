@@ -41,7 +41,7 @@ def test_цвет_активного_слова_доходит_до_отрисо
     )
 
     with Image.open(png) as image:
-        цвета = set(image.get_flattened_data())
+        цвета = set(image.getdata())
     assert (*параметры["цвет_активного_слова"], 255) in цвета
 
 
@@ -97,7 +97,7 @@ def test_схема_берёт_шрифт_и_цвета_субтитров(tmp_p
     gen_scheme.panel_png("premium2", png, стиль)
 
     with Image.open(png) as image:
-        цвета = {значение[:3] for значение in image.get_flattened_data()}
+        цвета = {значение[:3] for значение in image.getdata()}
     assert шрифты and set(шрифты) == {"Oswald.ttf"}
     assert параметры_субтитров(стиль)["цвет_текста"] in цвета
     assert параметры_субтитров(стиль)["цвет_активного_слова"] in цвета

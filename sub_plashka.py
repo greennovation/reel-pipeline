@@ -4,7 +4,7 @@
 Шрифт, положение, перенос строк и оба цвета берутся из раздела
 ``субтитры``. Тёмная скруглённая подложка отличает этот рендерер от «тени».
 """
-from typing import Any
+from typing import Any, Optional
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -31,7 +31,7 @@ def _font(параметры: dict[str, Any], weight: int = 700):
     return f
 
 
-def wrap(words, параметры: dict[str, Any] | None = None):
+def wrap(words, параметры: Optional[dict[str, Any]] = None):
     """Переносит текст по ширине строки из фирменного стиля."""
     параметры = параметры or _параметры_по_умолчанию()
     lines, line = [], []
@@ -50,7 +50,7 @@ def render_state(
     phrase,
     active_i,
     out_png,
-    параметры: dict[str, Any] | None = None,
+    параметры: Optional[dict[str, Any]] = None,
 ):
     """Рендерит PNG с плашкой и подсветкой активного слова из стиля."""
     параметры = параметры or _параметры_по_умолчанию()

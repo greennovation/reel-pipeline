@@ -13,7 +13,7 @@ import json
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
@@ -54,7 +54,7 @@ def load_words(json_path, start, end):
     return words
 
 
-def group_phrases(words, параметры: dict[str, Any] | None = None):
+def group_phrases(words, параметры: Optional[dict[str, Any]] = None):
     """Бьёт слова на фразы по настройкам длины строк и паузы стиля."""
     параметры = параметры or _параметры_по_умолчанию()
     phrases, cur = [], []
@@ -75,7 +75,7 @@ def group_phrases(words, параметры: dict[str, Any] | None = None):
     return phrases
 
 
-def wrap_lines(phrase, параметры: dict[str, Any] | None = None):
+def wrap_lines(phrase, параметры: Optional[dict[str, Any]] = None):
     """Переносит слова по ширине строки из фирменного стиля."""
     параметры = параметры or _параметры_по_умолчанию()
     lines, line = [], []
@@ -104,7 +104,7 @@ def render_state(
     phrase,
     active_i,
     out_png,
-    параметры: dict[str, Any] | None = None,
+    параметры: Optional[dict[str, Any]] = None,
 ):
     """Рендерит PNG с тенью, подсвечивая активное слово цветом стиля."""
     параметры = параметры or _параметры_по_умолчанию()
