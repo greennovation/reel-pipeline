@@ -13,3 +13,4 @@ __pycache__/
 build_2*.py
 make_reel_2*.py
 merge_*.py
+.venv*/
