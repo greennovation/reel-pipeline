@@ -4,8 +4,21 @@ set -u
 ok(){ printf "  ✅ %s\n" "$1"; }
 no(){ printf "  ❌ %s — %s\n" "$1" "$2"; FAIL=1; }
 FAIL=0
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+проверить_ffmpeg(){
+  local output check
+  if ! output="$(ffmpeg -version 2>&1)"; then
+    no "ffmpeg" "brew install ffmpeg"
+  elif check="$(printf '%s\n' "$output" | python3 "$SCRIPT_DIR/ffmpeg_version.py" 2>&1)"; then
+    ok "ffmpeg $check"
+  else
+    no "ffmpeg" "$check"
+  fi
+}
+
 echo "== Инструменты =="
-command -v ffmpeg  >/dev/null && ok "ffmpeg"  || no "ffmpeg"  "brew install ffmpeg"
+command -v ffmpeg >/dev/null && проверить_ffmpeg || no "ffmpeg" "brew install ffmpeg"
 command -v ffprobe >/dev/null && ok "ffprobe" || no "ffprobe" "идёт с ffmpeg"
 command -v whisper >/dev/null && ok "whisper (openai)" || no "whisper" "pip install -U openai-whisper"
 command -v avconvert >/dev/null && ok "avconvert (Apple HDR→SDR)" || no "avconvert" "только macOS; цвет iPhone недоступен"

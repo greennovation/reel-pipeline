@@ -18,6 +18,7 @@ import sys
 import tempfile
 from typing import Any, Sequence
 
+from ffmpeg_version import проверить_версию_ffmpeg
 from ролик import загрузить_ролик, пути_ролика, прочитать_слова, собрать_план
 from стиль import кадров_в_секунду, загрузить_стиль, параметры_субтитров
 
@@ -60,6 +61,15 @@ def запустить(команда: Sequence[str], **kwargs: Any) -> subproce
     except FileNotFoundError as ошибка:
         имя = Path(str(команда[0])).name
         raise ОшибкаПользователя(_сообщение_об_инструменте(имя)) from ошибка
+
+
+def проверить_ffmpeg() -> None:
+    """Отсекает старый ffmpeg до запуска стадий монтажа."""
+    результат = запустить(["ffmpeg", "-version"], capture_output=True, text=True)
+    try:
+        проверить_версию_ffmpeg(результат.stdout or "")
+    except ValueError as ошибка:
+        raise ОшибкаПользователя(str(ошибка)) from ошибка
 
 
 def _путь_от_корня(значение: str | Path, корень: Path) -> Path:
@@ -470,7 +480,7 @@ def обработать_готовое(
         присоединить_финал(тело, база, описание, корень, стиль)
         финал.unlink(missing_ok=True)
         запустить(
-            ["python3", str(КОРЕНЬ_ДВИЖКА / "gen_finale.py"), str(база), str(финал), str(путь_стиля)],
+            [sys.executable, str(КОРЕНЬ_ДВИЖКА / "gen_finale.py"), str(база), str(финал), str(путь_стиля)],
             cwd=корень,
         )
 
@@ -494,7 +504,7 @@ def обработать_готовое(
 
         запустить(
             [
-                "python3",
+                sys.executable,
                 str(КОРЕНЬ_ДВИЖКА / "gen_polish.py"),
                 str(финал),
                 str(полировка),
@@ -505,7 +515,7 @@ def обработать_готовое(
         _проверить_результат(полировка, "gen_polish")
         запустить(
             [
-                "python3",
+                sys.executable,
                 str(КОРЕНЬ_ДВИЖКА / "gen_music.py"),
                 str(полировка),
                 str(перед_обложкой),
@@ -518,7 +528,7 @@ def обработать_готовое(
         кандидат.unlink(missing_ok=True)
         запустить(
             [
-                "python3",
+                sys.executable,
                 str(КОРЕНЬ_ДВИЖКА / "gen_cover.py"),
                 str(путь_ролика),
                 str(перед_обложкой),
@@ -575,6 +585,7 @@ def собрать(путь_ролика: str | Path, путь_стиля: str |
         return план
 
     _проверить_исходник(пути["исходник"], корень_проекта)
+    проверить_ffmpeg()
     предупредить_об_ориентации(пути["исходник"], корень_проекта)
     подготовить_sdr(пути["исходник"], пути["приведённый_цвет"])
     wav: Path | None = None
@@ -584,7 +595,7 @@ def собрать(путь_ролика: str | Path, путь_стиля: str |
         тело = корень_проекта / "cut" / f"{описание['ролик']}.mp4"
         запустить(
             [
-                "python3",
+                sys.executable,
                 str(КОРЕНЬ_ДВИЖКА / "stitch_reel.py"),
                 str(план),
                 str(стиль_файл),

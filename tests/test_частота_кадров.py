@@ -70,7 +70,7 @@ def test_шаблон_передаёт_обложке_markdown_описание_
     шаблон.main()
 
     assert [
-        "python3",
+        sys.executable,
         "gen_cover.py",
         Path("reels/тест.md"),
         "cut/TEMPLATE_тест_pre.mp4",

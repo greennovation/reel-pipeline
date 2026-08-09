@@ -53,8 +53,8 @@ def main():
     стиль = загрузить_стиль(STYLE)
     vf = видеофильтр(стиль)
     src, spans = FINALE[rid]
-    run(["python3", BUILD, rid])
-    run(["python3", "stitch_reel.py", f"plan/{SHOOT}_{rid}.json", STYLE])   # -> cut/<SHOOT>_<rid>.mp4
+    run([sys.executable, BUILD, rid])
+    run([sys.executable, "stitch_reel.py", f"plan/{SHOOT}_{rid}.json", STYLE])   # -> cut/<SHOOT>_<rid>.mp4
     tmp = Path(tempfile.mkdtemp(prefix=f"reel{rid}_"))
     body = f"cut/{SHOOT}_{rid}.mp4"; base = f"cut/{SHOOT}_{rid}_full.mp4"
     if spans:
@@ -66,10 +66,10 @@ def main():
         run(["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", str(lst), "-c", "copy", base])
     else:
         run(["ffmpeg", "-y", "-v", "error", "-i", body, "-c", "copy", base])
-    fin = f"cut/{SHOOT}_{rid}_final.mp4"; run(["python3", "gen_finale.py", base, fin, STYLE])
-    pol = f"cut/{SHOOT}_{rid}_polished.mp4"; run(["python3", "gen_polish.py", fin, pol, f"{dur(fin)-3.0:.2f}"])
-    pre = f"cut/{SHOOT}_{rid}_pre.mp4"; run(["python3", "gen_music.py", pol, pre, "0.05", "pad"])
-    music = f"cut/{SHOOT}_{rid}_music.mp4"; run(["python3", "gen_cover.py", ролик, pre, music, STYLE])
+    fin = f"cut/{SHOOT}_{rid}_final.mp4"; run([sys.executable, "gen_finale.py", base, fin, STYLE])
+    pol = f"cut/{SHOOT}_{rid}_polished.mp4"; run([sys.executable, "gen_polish.py", fin, pol, f"{dur(fin)-3.0:.2f}"])
+    pre = f"cut/{SHOOT}_{rid}_pre.mp4"; run([sys.executable, "gen_music.py", pol, pre, "0.05", "pad"])
+    music = f"cut/{SHOOT}_{rid}_music.mp4"; run([sys.executable, "gen_cover.py", ролик, pre, music, STYLE])
     for f in [body, base, fin, pol, pre]:
         if os.path.exists(f): os.remove(f)
     print(f"OK -> {music}")

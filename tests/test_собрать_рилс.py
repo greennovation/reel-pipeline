@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -80,6 +81,8 @@ def _подменить_программы(monkeypatch: pytest.MonkeyPatch, ко
             if "format=duration" in команда:
                 return SimpleNamespace(stdout="10.0\n")
             return SimpleNamespace(stdout="width=1920\nheight=1080\nrotation=-90\n")
+        if имя == "ffmpeg" and команда[1:] == ["-version"]:
+            return SimpleNamespace(stdout="ffmpeg version 4.4.1\n")
         if имя == "avconvert":
             Path(команда[команда.index("-o") + 1]).touch()
         elif имя == "ffmpeg":
@@ -92,7 +95,7 @@ def _подменить_программы(monkeypatch: pytest.MonkeyPatch, ко
                 ),
                 encoding="utf-8",
             )
-        elif имя == "python3":
+        elif команда[0] == sys.executable:
             скрипт = Path(команда[1]).name
             if скрипт == "stitch_reel.py":
                 план = json.loads(Path(команда[2]).read_text(encoding="utf-8"))
@@ -131,13 +134,52 @@ def test_существующие_sdr_и_транскрипт_не_пересо�
     assert "avconvert" not in программы
     assert "whisper" not in программы
     assert итог == tmp_path / "cut" / "тест.mp4"
-    assert [Path(команда[1]).name for команда in команды if команда[0] == "python3"] == [
+    команды_шагов = [команда for команда in команды if команда[0] == sys.executable]
+    assert [Path(команда[1]).name for команда in команды_шагов] == [
         "stitch_reel.py",
         "gen_finale.py",
         "gen_polish.py",
         "gen_music.py",
         "gen_cover.py",
     ]
+    assert all(команда[0] == sys.executable for команда in команды_шагов)
+
+
+def test_слишком_старый_ffmpeg_сообщает_найденную_и_минимальную_версии(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    команды: list[list[str]] = []
+
+    def запуск(команда, **_kwargs):
+        команды.append(команда)
+        return SimpleNamespace(stdout="ffmpeg version 4.2.2 Copyright")
+
+    monkeypatch.setattr(собрать_рилс, "запустить", запуск)
+
+    with pytest.raises(собрать_рилс.ОшибкаПользователя) as поймано:
+        собрать_рилс.проверить_ffmpeg()
+
+    сообщение = str(поймано.value)
+    assert "ffmpeg" in сообщение
+    assert "4.2.2" in сообщение
+    assert "4.4" in сообщение
+    assert команды == [["ffmpeg", "-version"]]
+
+
+def test_достаточная_версия_ffmpeg_проходит_проверку_и_не_мешает_сборке(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    команды: list[list[str]] = []
+
+    def запуск(команда, **_kwargs):
+        команды.append(команда)
+        return SimpleNamespace(stdout="ffmpeg version 4.4.1 Copyright")
+
+    monkeypatch.setattr(собрать_рилс, "запустить", запуск)
+
+    собрать_рилс.проверить_ffmpeg()
+
+    assert команды == [["ffmpeg", "-version"]]
 
 
 def test_отсутствующий_sdr_готовится_через_нужный_пресет(
