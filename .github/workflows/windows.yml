@@ -21,8 +21,19 @@ jobs:
 
       # choco стабильнее winget в Actions: winget в образах windows-latest
       # периодически недоступен без интерактивной первичной настройки.
+      # Ретраи: community-feed choco временами отдаёт 504 и при этом choco
+      # выходит нулём с «installed 0/0 packages» (живой случай 21.08.2026),
+      # поэтому успех меряем наличием ffmpeg в PATH, а не кодом выхода.
       - name: Установить ffmpeg
-        run: choco install ffmpeg -y --no-progress
+        run: |
+          $ok = $false
+          foreach ($i in 1..3) {
+            choco install ffmpeg -y --no-progress
+            if (Get-Command ffmpeg -ErrorAction SilentlyContinue) { $ok = $true; break }
+            Write-Host "ffmpeg не появился после попытки $i, жду и повторяю"
+            Start-Sleep -Seconds 30
+          }
+          if (-not $ok) { Write-Error "ffmpeg не установился за 3 попытки"; exit 1 }
 
       - name: Проверить ffmpeg
         run: ffmpeg -version
