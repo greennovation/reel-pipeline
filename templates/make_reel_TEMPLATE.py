@@ -43,7 +43,8 @@ def enc(args, out):
 
 def dur(p):
     o = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
-                        "-of", "default=nw=1:nk=1", str(p)], capture_output=True, text=True)
+                        "-of", "default=nw=1:nk=1", str(p)], capture_output=True,
+                        text=True, encoding="utf-8")
     return float(o.stdout.strip())
 
 
@@ -62,7 +63,12 @@ def main():
         for i, (a, b) in enumerate(spans):
             p = tmp / f"fin{i}.mp4"; enc(["-ss", str(a), "-to", str(b), "-i", src, "-vf", vf], p); parts.append(p)
         lst = tmp / "concat.txt"
-        lst.write_text("".join(f"file '{Path(p).resolve()}'\n" for p in [body, *parts]))
+        # as_posix(): concat-протокол ffmpeg экранирует \, обратные слэши
+        # Windows-путей иначе ломают список файлов (см. тот же фикс в stitch_reel.py).
+        lst.write_text(
+            "".join(f"file '{Path(p).resolve().as_posix()}'\n" for p in [body, *parts]),
+            encoding="utf-8",
+        )
         run(["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", str(lst), "-c", "copy", base])
     else:
         run(["ffmpeg", "-y", "-v", "error", "-i", body, "-c", "copy", base])

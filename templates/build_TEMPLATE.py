@@ -42,7 +42,7 @@ SHOOT = "TEMPLATE"   # префикс плана/выхода: plan/<SHOOT>_<id>
 
 
 def load_words(tjson):
-    data = json.loads(Path(tjson).read_text())
+    data = json.loads(Path(tjson).read_text(encoding="utf-8"))
     raw = []
     for seg in data["segments"]:
         for w in seg.get("words", []):
@@ -104,7 +104,9 @@ def build(name):
                        "words": [] if idx in nosub else pw})
     plan = {"src": src, "out": f"cut/{SHOOT}_{name}.mp4", "pieces": pieces}
     Path("plan").mkdir(exist_ok=True)
-    Path(f"plan/{SHOOT}_{name}.json").write_text(json.dumps(plan, ensure_ascii=False, indent=1))
+    Path(f"plan/{SHOOT}_{name}.json").write_text(
+        json.dumps(plan, ensure_ascii=False, indent=1), encoding="utf-8"
+    )
     dur = sum(p["end"] - p["start"] for p in pieces)
     nw = sum(len(p["words"]) for p in pieces)
     print(f"{SHOOT}_{name}: {dur:.1f}s, {len(pieces)} кусков, {nw} слов -> plan/{SHOOT}_{name}.json")
