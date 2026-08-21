@@ -1,0 +1,40 @@
+name: Windows
+
+# Приёмочный контур для Windows-порта движка: реальной Windows-машины у нас
+# нет, поэтому GitHub Actions windows-latest — единственная живая проверка,
+# что pytest зелёный на Windows, а не только в предположениях.
+on:
+  push:
+    branches: [main, windows-порт]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pytest-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # choco стабильнее winget в Actions: winget в образах windows-latest
+      # периодически недоступен без интерактивной первичной настройки.
+      - name: Установить ffmpeg
+        run: choco install ffmpeg -y --no-progress
+
+      - name: Проверить ffmpeg
+        run: ffmpeg -version
+
+      - name: Установить зависимости Python
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-test.txt
+
+      - name: Проверить окружение (pipeline_check.py)
+        run: python pipeline_check.py
+        continue-on-error: true  # whisper и ассеты не входят в репозиторий — это ожидаемо
+
+      - name: pytest
+        run: python -m pytest -q
