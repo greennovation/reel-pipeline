@@ -9,6 +9,7 @@ from typing import Any, Optional
 from PIL import Image, ImageDraw, ImageFont
 
 from стиль import параметры_субтитров, путь_к_шрифту, стиль_с_умолчаниями_субтитров
+import субтитры_нарезка
 
 
 _ЦВЕТ_ПЛАШКИ = (38, 38, 40, 150)
@@ -32,18 +33,9 @@ def _font(параметры: dict[str, Any], weight: int = 700):
 
 
 def wrap(words, параметры: Optional[dict[str, Any]] = None):
-    """Переносит текст по ширине строки из фирменного стиля."""
+    """Переносит текст по реальной ширине шрифта, а не по числу символов."""
     параметры = параметры or _параметры_по_умолчанию()
-    lines, line = [], []
-    for w in words:
-        if line and len(" ".join(x["text"] for x in line + [w])) > параметры["символов_в_строке"]:
-            lines.append(line)
-            line = [w]
-        else:
-            line.append(w)
-    if line:
-        lines.append(line)
-    return lines
+    return субтитры_нарезка.перенести(words, параметры, _font(параметры))
 
 
 def render_state(

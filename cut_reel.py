@@ -13,11 +13,12 @@ import json
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Sequence
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from стиль import УМОЛЧАНИЯ, загрузить_стиль, параметры_субтитров, путь_к_шрифту
+import субтитры_нарезка
 
 
 # Старые шаблоны импортируют размеры кадра из этого модуля. Их источник правды
@@ -54,40 +55,27 @@ def load_words(json_path, start, end):
     return words
 
 
-def group_phrases(words, параметры: Optional[dict[str, Any]] = None):
-    """Бьёт слова на фразы по настройкам длины строк и паузы стиля."""
+def group_phrases(
+    words,
+    параметры: Optional[dict[str, Any]] = None,
+    план: Optional[Sequence[int]] = None,
+):
+    """Бьёт слова на реплики: по смысловому плану помощника или по паузе и вместимости.
+
+    ``план`` это номера слов, с которых начинается новая реплика. Его готовит
+    помощник, читая расшифровку: название продукта целиком, предлог к своему слову,
+    прилагательное с существительным. Плана нет, значит работает механика.
+    """
     параметры = параметры or _параметры_по_умолчанию()
-    phrases, cur = [], []
-    for w in words:
-        candidate = cur + [w]
-        text_len = len(" ".join(x["text"] for x in candidate))
-        long_pause = cur and w["start"] - cur[-1]["end"] > параметры["пауза_новой_фразы"]
-        if cur and (
-            text_len > параметры["символов_в_строке"] * параметры["строк_максимум"]
-            or long_pause
-        ):
-            phrases.append(cur)
-            cur = [w]
-        else:
-            cur = candidate
-    if cur:
-        phrases.append(cur)
-    return phrases
+    return субтитры_нарезка.сгруппировать(
+        words, параметры, шрифт=make_font(параметры, 600), план=план
+    )
 
 
 def wrap_lines(phrase, параметры: Optional[dict[str, Any]] = None):
-    """Переносит слова по ширине строки из фирменного стиля."""
+    """Переносит слова по реальной ширине шрифта, а не по числу символов."""
     параметры = параметры or _параметры_по_умолчанию()
-    lines, line = [], []
-    for w in phrase:
-        if line and len(" ".join(x["text"] for x in line + [w])) > параметры["символов_в_строке"]:
-            lines.append(line)
-            line = [w]
-        else:
-            line.append(w)
-    if line:
-        lines.append(line)
-    return lines
+    return субтитры_нарезка.перенести(phrase, параметры, make_font(параметры, 600))
 
 
 def make_font(параметры: dict[str, Any], weight: int):
