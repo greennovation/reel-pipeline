@@ -176,7 +176,7 @@ def test_план_совпадает_со_старым_шаблоном(tmp_path
     )
     monkeypatch.chdir(tmp_path)
     старый.build("совместимость")
-    ожидаемый = json.loads((tmp_path / "plan" / "TEMPLATE_совместимость.json").read_text())
+    ожидаемый = json.loads((tmp_path / "plan" / "TEMPLATE_совместимость.json").read_text(encoding="utf-8"))
 
     описание = загрузить_ролик(
         _записать_описание(
