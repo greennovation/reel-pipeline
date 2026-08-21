@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Проверка окружения для reel-пайплайна. Запуск: bash pipeline_check.sh
+# Проверка окружения для reel-пайплайна (macOS/Linux). Запуск: bash pipeline_check.sh
+# На Windows используйте кроссплатформенную версию: python3 pipeline_check.py
 set -u
 ok(){ printf "  ✅ %s\n" "$1"; }
 no(){ printf "  ❌ %s — %s\n" "$1" "$2"; FAIL=1; }
@@ -21,7 +22,7 @@ echo "== Инструменты =="
 command -v ffmpeg >/dev/null && проверить_ffmpeg || no "ffmpeg" "brew install ffmpeg"
 command -v ffprobe >/dev/null && ok "ffprobe" || no "ffprobe" "идёт с ffmpeg"
 command -v whisper >/dev/null && ok "whisper (openai)" || no "whisper" "pip install -U openai-whisper"
-command -v avconvert >/dev/null && ok "avconvert (Apple HDR→SDR)" || no "avconvert" "только macOS; цвет iPhone недоступен"
+command -v avconvert >/dev/null && ok "avconvert (Apple HDR→SDR, эталон)" || printf "  ⚠️  %s — %s\n" "avconvert" "нет (только macOS); движок сам переключится на ffmpeg zscale+tonemap, если он собран с этим фильтром"
 python3 -c "import PIL" 2>/dev/null && ok "Pillow (субтитры)" || no "Pillow" "pip install pillow"
 python3 -c "import numpy" 2>/dev/null && ok "numpy" || no "numpy" "pip install numpy"
 echo "== Ассеты =="
