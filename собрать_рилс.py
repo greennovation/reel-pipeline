@@ -21,6 +21,7 @@ from typing import Any, Sequence
 from ffmpeg_version import проверить_версию_ffmpeg
 from ролик import загрузить_ролик, пути_ролика, прочитать_слова, собрать_план
 from стиль import кадров_в_секунду, загрузить_стиль, параметры_субтитров
+import тонмап
 
 
 КОРЕНЬ_ДВИЖКА = Path(__file__).resolve().parent
@@ -41,11 +42,13 @@ def _текст_пути(путь: Path, корень: Path) -> str:
 def _сообщение_об_инструменте(имя: str) -> str:
     сообщения = {
         "avconvert": (
-            "Не найден avconvert. Монтаж рилсов работает только на macOS: "
-            "avconvert уже входит в macOS."
+            "avconvert пропал между проверкой и запуском (macOS). "
+            "Повторите запуск: движок сам переключится на способ приведения "
+            "цвета через ffmpeg, если avconvert больше не в PATH."
         ),
-        "ffmpeg": "Не найден ffmpeg. Установите его командой: brew install ffmpeg",
-        "ffprobe": "Не найден ffprobe. Установите ffmpeg командой: brew install ffmpeg",
+        "ffmpeg": "Не найден ffmpeg. Установите его: macOS — brew install ffmpeg, "
+        "Windows — choco install ffmpeg-full.",
+        "ffprobe": "Не найден ffprobe. Он идёт вместе с ffmpeg — установите ffmpeg.",
         "whisper": (
             "Не найден whisper. Установите распознавание командой: "
             "python3 -m pip install -U openai-whisper"
@@ -65,7 +68,9 @@ def запустить(команда: Sequence[str], **kwargs: Any) -> subproce
 
 def проверить_ffmpeg() -> None:
     """Отсекает старый ffmpeg до запуска стадий монтажа."""
-    результат = запустить(["ffmpeg", "-version"], capture_output=True, text=True)
+    результат = запустить(
+        ["ffmpeg", "-version"], capture_output=True, text=True, encoding="utf-8"
+    )
     try:
         проверить_версию_ffmpeg(результат.stdout or "")
     except ValueError as ошибка:
@@ -117,6 +122,7 @@ def _прочитать_поворот(исходник: Path) -> tuple[int | No
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
     )
     вывод = результат.stdout or ""
 
@@ -158,23 +164,21 @@ def предупредить_об_ориентации(исходник: Path, �
 
 
 def подготовить_sdr(исходник: Path, sdr: Path) -> None:
-    """Создаёт SDR-копию iPhone-исходника, но не трогает уже готовую."""
+    """Создаёт SDR-копию iPhone-исходника, но не трогает уже готовую.
+
+    На macOS с avconvert в PATH способ и команда байт-в-байт совпадают с
+    прежним прямым вызовом avconvert. На Windows/Linux без avconvert
+    используется способ через ffmpeg (zscale+tonemap) — см. тонмап.py.
+    """
     if sdr.is_file():
         return
     sdr.parent.mkdir(parents=True, exist_ok=True)
-    запустить(
-        [
-            "avconvert",
-            "-p",
-            "Preset1920x1080",
-            "-s",
-            str(исходник),
-            "-o",
-            str(sdr),
-            "--replace",
-        ]
-    )
-    _проверить_результат(sdr, "приведение цвета avconvert")
+    try:
+        способ = тонмап.выбрать_способ(запустить=запустить)
+        тонмап.привести_к_sdr(исходник, sdr, способ, запустить=запустить)
+    except тонмап.ОшибкаТонмапа as ошибка:
+        raise ОшибкаПользователя(str(ошибка)) from ошибка
+    _проверить_результат(sdr, "приведение цвета")
 
 
 def подготовить_транскрипт(
@@ -430,6 +434,7 @@ def длительность(путь: Path) -> float:
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
     )
     try:
         return float((результат.stdout or "").strip())
