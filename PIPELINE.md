@@ -13,7 +13,8 @@
 - **B. Склейка / коллаб** — соединить несколько клипов, добавить субтитры на нужный момент. (`merge_*`)
 
 Результат единый: **1080×1920, частота из `формат.кадров_в_секунду` в
-«Фирменный стиль.md» (по умолчанию 30), SDR (bt709), стерео 48k**, цвет как на iPhone.
+«Фирменный стиль.md» (по умолчанию 30), SDR (bt709), стерео 48k**, цвет как на iPhone
+(побитово на macOS через avconvert, очень близко на Windows/Linux через ffmpeg-тонмап).
 
 ---
 
@@ -23,8 +24,15 @@
 brew install ffmpeg                 # ffmpeg + ffprobe
 pip install -U openai-whisper       # транскрипция (CPU ок)
 pip install pillow numpy            # субтитры, утилиты
-# avconvert — встроен в macOS (нужен для цвета iPhone HDR→SDR)
+# avconvert — встроен в macOS (эталонный способ цвета iPhone HDR→SDR)
 bash pipeline_check.sh              # проверить, что всё на месте
+```
+
+На Windows/Linux (`avconvert` недоступен):
+```powershell
+choco install ffmpeg-full           # сборка с фильтром zscale — обычный ffmpeg его не даёт
+python -m pip install -U openai-whisper pillow numpy pyyaml
+python pipeline_check.py            # кроссплатформенная проверка окружения
 ```
 Ассеты в `assets/`: шрифт `fonts/Unbounded.ttf`, стикеры-маскоты `stickers/*.png`.
 
@@ -32,9 +40,16 @@ bash pipeline_check.sh              # проверить, что всё на м�
 
 ## 2. ⚠️ Три правила, выученные кровью
 
-1. **ЦВЕТ — только Apple `avconvert`, не ffmpeg-LUT.** iPhone снимает HDR (HLG, `color_transfer=arib-std-b67`). ffmpeg без тонмапа даёт пересвет/блёклость; LUT/грейды искажают. Нативный тонмап «как айфон/QuickTime» даёт **только** `avconvert -p Preset1920x1080` (H.264-пресет форсит SDR; HEVC-пресеты сохраняют HDR — не годятся).
+1. **ЦВЕТ — эталон Apple `avconvert`, не голый ffmpeg-LUT.** iPhone снимает HDR (HLG, `color_transfer=arib-std-b67`). ffmpeg без тонмапа даёт пересвет/блёклость; LUT/грейды искажают. Нативный тонмап «как айфон/QuickTime» даёт **только** `avconvert -p Preset1920x1080` (H.264-пресет форсит SDR; HEVC-пресеты сохраняют HDR — не годятся).
    ```bash
    avconvert -p Preset1920x1080 -s raw/SHOT.MOV -o raw_sdr/SHOT.mov --replace
+   ```
+   На Windows/Linux, где `avconvert` не существует, `тонмап.py` делает тот же
+   переход через `zscale` (HLG→линейный свет→BT.709) + `tonemap=hable:desat=0`
+   — цвет очень близок к яблочному, но не идентичен побитово. Оба способа
+   выбираются автоматически, вызов один и тот же:
+   ```bash
+   python3 тонмап.py raw/SHOT.MOV raw_sdr/SHOT.mov
    ```
    На выход ffmpeg всегда ставить SDR-теги `-color_primaries/trc/colorspace bt709`, иначе плеер повторно тонмапит и цвет «гуляет».
 
@@ -62,10 +77,12 @@ ffmpeg -v error -y -i transcripts/SHOT.wav -ss 88 -to 108 -c copy transcripts/wi
 whisper transcripts/win.wav --model small --language Russian --word_timestamps True ...
 ```
 
-### Шаг 2. Конвертировать цвет (Apple SDR)
+### Шаг 2. Конвертировать цвет (HDR → SDR)
 ```bash
-avconvert -p Preset1920x1080 -s raw/SHOT.MOV -o raw_sdr/SHOT.mov --replace
+python3 тонмап.py raw/SHOT.MOV raw_sdr/SHOT.mov
 ```
+На macOS это тот же `avconvert -p Preset1920x1080 ...`, что раньше запускали
+вручную; на Windows/Linux — ffmpeg zscale+tonemap.
 
 ### Шаг 3. Описать рилс в `build_*.py`
 `cp templates/build_TEMPLATE.py build_<съёмка>.py`. Заполни:
@@ -97,7 +114,7 @@ python3 make_reel_<shoot>.py myreel    # полный конвейер -> cut/<s
 ## 4. Сценарий B — склейка / коллаб (`merge_*.py`)
 
 Пример склейки см. в README. Скопируй движок-подход из sub_plashka.py + concat (PIPELINE §4) (клип коллаба + новый кусок + субтитр на реплику).
-1. Каждый HDR-исходник → `avconvert` в SDR.
+1. Каждый HDR-исходник → `python3 тонмап.py` в SDR (avconvert на macOS, ffmpeg-тонмап иначе).
 2. Привести ВСЕ клипы к единому формату (важно для concat без рассинхрона):
    `scale→crop 1080×1920, частота из формат.кадров_в_секунду «Фирменный стиль.md»,
    setsar=1, yuv420p, aac 48k stereo, SDR-теги`.
@@ -133,7 +150,8 @@ python3 make_reel_<shoot>.py myreel    # полный конвейер -> cut/<s
 
 | Файл | Роль |
 |---|---|
-| `pipeline_check.sh` | проверка окружения |
+| `pipeline_check.sh` / `pipeline_check.py` | проверка окружения (macOS/Linux и кроссплатформенно) |
+| `тонмап.py` | выбор и запуск способа цвета HDR→SDR: avconvert (macOS) или ffmpeg zscale+tonemap |
 | `build_<shoot>.py` | план нарезки: куски + правки whisper → `plan/*.json` |
 | `stitch_reel.py` | рендер по плану: цвет, crop, зум, субтитры-тень |
 | `cut_reel.py` | константы стиля + рендер субтитра-тень (импортируется) |
@@ -145,15 +163,15 @@ python3 make_reel_<shoot>.py myreel    # полный конвейер -> cut/<s
 | `gen_scheme.py` | панель-схема в НИЖНЕЙ части кадра (обучающие рилсы: лицо↑ схема↓) |
 | `merge_<shoot>.py` | сценарий B: склейка клипов + субтитры |
 | `find_stutters.py` / `find_deadair.py` | детекторы запинок / тишины |
-| `gen_lut.py` | генератор HLG→SDR LUT (legacy; цвет теперь через avconvert) |
+| `gen_lut.py` | генератор HLG→SDR LUT (legacy; цвет теперь через тонмап.py) |
 
 ---
 
 ## 8. Чеклист передачи (для нового человека)
 
-- [ ] `bash pipeline_check.sh` — зелёно
+- [ ] `bash pipeline_check.sh` (macOS/Linux) или `python3 pipeline_check.py` (Windows) — зелёно
 - [ ] Своя съёмка → `raw/`, проверил `rotation`
-- [ ] avconvert → `raw_sdr/`
+- [ ] `python3 тонмап.py` → `raw_sdr/`
 - [ ] whisper word-тайминги → `transcripts/`
 - [ ] Скопировал templates/*TEMPLATE.py → build_<моё>.py + make_reel_<моё>.py, заполнил SOURCES/REELS/FINALE и Markdown-описания роликов
 - [ ] `build` → `make_reel` → QA кадрами + перетранскрипт готового
