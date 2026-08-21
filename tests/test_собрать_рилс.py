@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 import собрать_рилс
+import тонмап
 
 
 def _записать_ролик(
@@ -71,7 +72,14 @@ def _транскрипт(корень: Path) -> Path:
 
 
 def _подменить_программы(monkeypatch: pytest.MonkeyPatch, команды: list[list[str]]) -> None:
-    """Имитирует только побочные эффекты стадий, не требуя видеоинструментов."""
+    """Имитирует только побочные эффекты стадий, не требуя видеоинструментов.
+
+    Способ тонмапа принудительно «apple»: эти тесты проверяют команду
+    avconvert конкретно, а не то, что реально стоит на машине прогона —
+    иначе набор зависел бы от того, есть ли avconvert в PATH (на macOS
+    разработчика есть, на Windows CI нет, и тест ловил бы не ту стадию).
+    """
+    monkeypatch.setattr(тонмап, "_есть_avconvert", lambda: True)
 
     def запуск(команда, **_kwargs):
         команда = [str(часть) for часть in команда]
@@ -198,6 +206,41 @@ def test_отсутствующий_sdr_готовится_через_нужны
 
     avconvert = next(команда for команда in команды if команда[0] == "avconvert")
     assert avconvert[avconvert.index("-p") + 1] == "Preset1920x1080"
+
+
+def test_без_avconvert_sdr_готовится_через_ffmpeg_тонмап(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Регрессия windows-latest CI: способ выбирается по PATH, а не по маске."""
+    monkeypatch.setattr(тонмап, "_есть_avconvert", lambda: False)
+    исходник = tmp_path / "IMG_0421.MOV"
+    исходник.touch()
+    sdr = tmp_path / "raw_sdr" / "IMG_0421.mov"
+    команды: list[list[str]] = []
+
+    def запуск(команда, **_kwargs):
+        команда = [str(часть) for часть in команда]
+        команды.append(команда)
+        if команда[0] == "ffmpeg" and команда[1:] == ["-hide_banner", "-filters"]:
+            return SimpleNamespace(
+                stdout="... zscale             V->V  Apply resizing и т.д.\n"
+            )
+        if команда[0] == "ffprobe":
+            return SimpleNamespace(stdout="arib-std-b67\n")
+        if команда[0] == "ffmpeg":
+            Path(команда[-1]).touch()
+        return SimpleNamespace(stdout="")
+
+    monkeypatch.setattr(собрать_рилс, "запустить", запуск)
+
+    собрать_рилс.подготовить_sdr(исходник, sdr)
+
+    assert sdr.is_file()
+    assert "avconvert" not in [команда[0] for команда in команды]
+    assert any(
+        команда[0] == "ffmpeg" and команда[1:] == ["-hide_banner", "-filters"]
+        for команда in команды
+    )
 
 
 def test_отсутствующий_транскрипт_берёт_модель_язык_и_словные_тайминги(
