@@ -106,9 +106,10 @@ def main():
     png = tmp / "panel.png"
     panel_png(rid, png, стиль)
     o = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", src],
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(src)],
         capture_output=True,
         text=True,
+        encoding="utf-8",
     )
     dur = float(o.stdout.strip())
     off = dur - TAIL

@@ -61,9 +61,12 @@ def build_subs_track(words, duration, idx, tmp, стиль):
     lst = tmp / f"subs_{idx}.txt"
     txt = ""
     for png, d in lines:
-        txt += f"file '{png.resolve()}'\nduration {d:.3f}\n"
-    txt += f"file '{lines[-1][0].resolve()}'\n"
-    lst.write_text(txt)
+        # concat-протокол ffmpeg использует \ как escape-символ, поэтому пути
+        # пишем через прямой слэш (as_posix) — так они работают и на Windows,
+        # где resolve() иначе даёт C:\... с обратными слэшами.
+        txt += f"file '{png.resolve().as_posix()}'\nduration {d:.3f}\n"
+    txt += f"file '{lines[-1][0].resolve().as_posix()}'\n"
+    lst.write_text(txt, encoding="utf-8")
 
     subs = tmp / f"subs_{idx}.mov"
     run(["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", str(lst),
@@ -119,7 +122,7 @@ def build_piece(src, piece, idx, tmp, стиль):
 
 
 def main():
-    plan = json.loads(Path(sys.argv[1]).read_text())
+    plan = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
     стиль = загрузить_стиль(sys.argv[2] if len(sys.argv) > 2 else "Фирменный стиль.md")
     tmp = Path(tempfile.mkdtemp(prefix="reel_"))
     pieces = [build_piece(plan["src"], p, i, tmp, стиль) for i, p in enumerate(plan["pieces"])]
@@ -127,10 +130,15 @@ def main():
     out = Path(plan["out"])
     out.parent.mkdir(parents=True, exist_ok=True)
     if len(pieces) == 1:
-        pieces[0].rename(out)
+        # replace(), а не rename(): на Windows rename() падает, если out уже
+        # существует (повторный прогон), на macOS/Linux ведёт себя так же.
+        pieces[0].replace(out)
     else:
         lst = tmp / "concat.txt"
-        lst.write_text("".join(f"file '{p.resolve()}'\n" for p in pieces))
+        lst.write_text(
+            "".join(f"file '{p.resolve().as_posix()}'\n" for p in pieces),
+            encoding="utf-8",
+        )
         run(["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0",
              "-i", str(lst), "-c", "copy", str(out)])
     dur = sum(p["end"] - p["start"] for p in plan["pieces"])

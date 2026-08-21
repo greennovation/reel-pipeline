@@ -99,7 +99,8 @@ def frame(t, подпись):
 
 def dur(path):
     out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
-                          "-of", "default=nw=1:nk=1", path], capture_output=True, text=True)
+                          "-of", "default=nw=1:nk=1", str(path)], capture_output=True,
+                          text=True, encoding="utf-8")
     return float(out.stdout.strip())
 
 

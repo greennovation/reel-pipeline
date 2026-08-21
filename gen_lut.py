@@ -29,5 +29,5 @@ for bi in range(N):
             lin = lin * SCALE
             o = oetf709(lin)
             lines.append(f"{o[0]:.6f} {o[1]:.6f} {o[2]:.6f}")
-open(OUT, "w").write("\n".join(lines) + "\n")
+open(OUT, "w", encoding="utf-8").write("\n".join(lines) + "\n")
 print(f"OK {OUT} SCALE={SCALE}")

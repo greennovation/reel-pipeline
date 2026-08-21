@@ -40,7 +40,7 @@ def _параметры_по_умолчанию() -> dict[str, Any]:
 
 
 def load_words(json_path, start, end):
-    data = json.loads(Path(json_path).read_text())
+    data = json.loads(Path(json_path).read_text(encoding="utf-8"))
     words = []
     for seg in data["segments"]:
         for w in seg.get("words", []):

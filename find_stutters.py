@@ -34,7 +34,7 @@ def norm(t):
 
 
 def load_all_words(tjson):
-    d = json.loads(Path(tjson).read_text())
+    d = json.loads(Path(tjson).read_text(encoding="utf-8"))
     words = []
     for s in d["segments"]:
         for w in s.get("words", []):
@@ -152,7 +152,7 @@ def main():
              f"> Транскрипт: `{tjson}` · порог слова {DUR_TH}s · паузы {PAUSE_TH}s · окно повтора {REPEAT_WIN}s\n",
              "Классификация: ✂ фальстарт (резать первый) · 🔁 риторика (НЕ резать) · ✄ филлер (подрезать)\n"]
     for pf in plans:
-        plan = json.loads(Path(pf).read_text())
+        plan = json.loads(Path(pf).read_text(encoding="utf-8"))
         offs = piece_offsets(plan)
         cand = detect(words, offs)
         name = Path(pf).stem
@@ -163,11 +163,11 @@ def main():
             reel_t = src_to_reel(src_t, offs)
             v = f"{val:.2f}s" if typ != "near-repeat ×2" else f"+{val:.1f}s"
             lines.append(f"| {fmt(reel_t)} | {src_t:.2f} | {typ} | {v} | {context} |")
-    Path(OUT).write_text("\n".join(lines))
+    Path(OUT).write_text("\n".join(lines), encoding="utf-8")
     print(f"OK → {OUT}")
     print("\n".join(lines[:3]))
     for pf in plans:
-        plan = json.loads(Path(pf).read_text())
+        plan = json.loads(Path(pf).read_text(encoding="utf-8"))
         c = detect(words, piece_offsets(plan))
         print(f"  {Path(pf).stem}: {len(c)} кандидатов")
 

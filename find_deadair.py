@@ -29,5 +29,7 @@ for t, r in env:
         st = None
 name = Path(inp).stem.replace("_styled", "")
 spec = {"in": inp, "out": out, "cuts": cuts}
-Path(f"plan/{name}_deadair.json").write_text(json.dumps(spec, ensure_ascii=False, indent=1))
+Path(f"plan/{name}_deadair.json").write_text(
+    json.dumps(spec, ensure_ascii=False, indent=1), encoding="utf-8"
+)
 print(f"{name}: пауз {len(cuts)} →", cuts)
