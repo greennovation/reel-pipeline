@@ -19,21 +19,16 @@ jobs:
         with:
           python-version: "3.11"
 
-      # choco стабильнее winget в Actions: winget в образах windows-latest
-      # периодически недоступен без интерактивной первичной настройки.
-      # Ретраи: community-feed choco временами отдаёт 504 и при этом choco
-      # выходит нулём с «installed 0/0 packages» (живой случай 21.08.2026),
-      # поэтому успех меряем наличием ffmpeg в PATH, а не кодом выхода.
+      # Статический билд с GitHub-релизов BtbN: choco community feed дважды
+      # за один день (21.08.2026) отдавал 504 и ронял прогон, GitHub-релизы
+      # из Actions качаются надёжно. Билд GPL включает zscale (zimg).
       - name: Установить ffmpeg
         run: |
-          $ok = $false
-          foreach ($i in 1..3) {
-            choco install ffmpeg -y --no-progress
-            if (Get-Command ffmpeg -ErrorAction SilentlyContinue) { $ok = $true; break }
-            Write-Host "ffmpeg не появился после попытки $i, жду и повторяю"
-            Start-Sleep -Seconds 30
-          }
-          if (-not $ok) { Write-Error "ffmpeg не установился за 3 попытки"; exit 1 }
+          $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+          Invoke-WebRequest -Uri $url -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath $env:RUNNER_TEMP\ffmpeg
+          $bin = Get-ChildItem "$env:RUNNER_TEMP\ffmpeg" -Recurse -Directory -Filter bin | Select-Object -First 1
+          Add-Content $env:GITHUB_PATH $bin.FullName
 
       - name: Проверить ffmpeg
         run: ffmpeg -version
